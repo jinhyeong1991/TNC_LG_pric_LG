@@ -3097,7 +3097,57 @@ ${nSim ? `· 엑셀에 비슷한 모델 있음 ${nSim}건 (같은 제품일 수 
       e.preventDefault();
     } catch { /* 무시 */ }
   });
+  // ---- 수정 페이지: [저장 후 상품목록(모델명 검색)] ----
+  //  사이트의 [저장 후 목록] 버튼이 잘 안 먹을 때를 위해, [저장 후 현재페이지]로 저장하고 새로고침된 뒤
+  //  상품목록으로 이동해서 이 상품의 모델명으로 검색한다. (저장 없이 바로 가는 [상품목록(모델명 검색)]도 함께 둔다)
+  const HOP_KEY = 'tncLgHop';
+  const modelOfPage = () => {
+    const mf = document.getElementById('modifyForm') || (document.forms && document.forms.modifyForm);
+    const el = (mf && mf.elements && mf.elements.goods_modelname) || document.querySelector('input[name="goods_modelname"]');
+    return el ? String(el.value || '').trim() : '';
+  };
+  const listSearchUrl = (model) => `/admin/goods.php?search_item=all&search_keyword=${encodeURIComponent(model)}&search_keyword2=`;
+  function initEditHop() {
+    const run = getState(), ld = ssGet('tncLgLD');
+    if ((run && run.running) || (ld && ld.running)) return;                // 일괄 실행 중에는 건드리지 않음
+    // 저장 후 새로고침되어 돌아온 경우: 상품목록으로 이동
+    const hop = ssGet(HOP_KEY);
+    if (hop) {
+      ssDel(HOP_KEY);
+      if (Date.now() - hop.at < 20000) {
+        const model = modelOfPage() || hop.model;
+        if (model) { location.href = listSearchUrl(model); return; }
+      }
+    }
+    const listBtn = [...document.querySelectorAll('button')].find((b) => /ActionCheck\(\s*'mod'\s*,\s*'list'\s*\)/.test(b.getAttribute('onclick') || ''));
+    const curBtn = [...document.querySelectorAll('button')].find((b) => /ActionCheck\(\s*'mod'\s*,\s*'input'\s*\)/.test(b.getAttribute('onclick') || ''));
+    const anchor = listBtn || curBtn;
+    if (!anchor || document.getElementById('tncLgHopSave')) return;
+    const mk = (id, text, fn) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.id = id; b.className = anchor.className; b.textContent = text;
+      b.style.cssText = 'margin-left:4px;';
+      b.addEventListener('click', fn);
+      return b;
+    };
+    const save = mk('tncLgHopSave', '저장 후 상품목록(모델명 검색)', () => {
+      const model = modelOfPage();
+      if (!model) { alert('모델명이 비어 있어 검색할 수 없습니다.'); return; }
+      if (!curBtn) { alert('[저장 후 현재페이지] 버튼을 찾지 못했습니다.'); return; }
+      ssSet(HOP_KEY, { at: Date.now(), model });
+      curBtn.click();
+      setTimeout(() => ssDel(HOP_KEY), 20000);   // 저장이 막혀(필수값 알림 등) 새로고침이 없으면 표시를 지운다
+    });
+    const only = mk('tncLgHopGo', '상품목록(모델명 검색)', () => {
+      const model = modelOfPage();
+      location.href = model ? listSearchUrl(model) : '/admin/goods.php';
+    });
+    anchor.after(save);
+    save.after(only);
+  }
+
   if (IS_LIST) { initListUi(); initLgUi(); initDisUi(); }
+  if (IS_EDIT) initEditHop();
   refreshRun();
   tick();
   if (IS_LIST) tickListDel();
